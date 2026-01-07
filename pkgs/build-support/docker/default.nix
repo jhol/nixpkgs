@@ -1266,6 +1266,11 @@ rec {
       shell ? lib.getExe bash,
       command ? null,
       run ? null,
+      # Legacy convenience derivations for backwards compatibility.
+      extraContents ? [
+        binSh
+        usrBinEnv
+      ],
     }:
     assert lib.assertMsg (!(drv.drvAttrs.__structuredAttrs or false))
       "streamNixShellImage: Does not work with the derivation ${drv.name} because it uses __structuredAttrs";
@@ -1387,8 +1392,6 @@ rec {
     streamLayeredImage {
       inherit name tag;
       contents = [
-        binSh
-        usrBinEnv
         (fakeNss.override {
           # Allows programs to look up the build user's home directory.
           #
@@ -1405,7 +1408,8 @@ rec {
             "nixbld:!:${toString gid}:"
           ];
         })
-      ];
+      ]
+      ++ (if builtins.isList extraContents then extraContents else [ extraContents ]);
 
       fakeRootCommands = ''
         # Effectively a single-user installation of Nix, giving the user full
