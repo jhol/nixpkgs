@@ -1516,6 +1516,24 @@ The environment in the image doesn't match `nix-shell` or `nix-build` exactly, a
 
   _Default value:_ `null`.
 
+`extraContents` (Path or List of Paths or Null; _optional_)
+
+: Extra directories whose contents will be added to the generated image.
+  Things that coerce to paths (e.g. a derivation) can also be used.
+  This can be seen as an equivalent of `ADD extraContents/ /` in a `Dockerfile`.
+
+  All the contents specified by `extraContents` along with the base contents from this helper will be added as a final layer in the generated image.
+  They will be added as links to the actual files (e.g. links to the store paths). The actual files will be added in previous layers.
+
+  If not specified, some convenience extra contents are included by default:
+
+  - `/bin/sh`
+    - Symlink to `${bash}/bin/bash`.
+  - `/usr/bin/env`
+    - Symlink to `${coreutils}/bin/env`.
+
+  _Default value:_ `[ "{/bin/sh derivation}" "{/usr/bin/env derivation}" ]`.
+
 ### Examples {#ssec-pkgs-dockerTools-streamNixShellImage-examples}
 
 :::{.example #ex-dockerTools-streamNixShellImage-hello}
