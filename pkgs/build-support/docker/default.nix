@@ -1305,8 +1305,9 @@ rec {
         ''}
       '';
 
-      # https://github.com/NixOS/nix/blob/2.32.0/src/libstore/include/nix/store/globals.hh#L778-L788
-      sandboxBuildDir = "/build";
+      #
+      # Create an environment variable map.
+      #
 
       drvEnv =
         devShellTools.unstructuredDerivationInputEnv { inherit (drv) drvAttrs; }
@@ -1315,13 +1316,11 @@ rec {
           outputMap = drv;
         };
 
-      # Environment variables set in the image
-      envVars = {
+      # https://github.com/NixOS/nix/blob/2.32.0/src/libstore/include/nix/store/globals.hh#L778-L788
+      sandboxBuildDir = "/build";
 
-        # Root certificates for internet access
-        SSL_CERT_FILE = "${cacert}/etc/ssl/certs/ca-bundle.crt";
-        NIX_SSL_CERT_FILE = "${cacert}/etc/ssl/certs/ca-bundle.crt";
-
+      # https://github.com/NixOS/nix/blob/2.32.0/src/libstore/unix/build/derivation-builder.cc#L997
+      initEnv = {
         # https://github.com/NixOS/nix/blob/2.32.0/src/libstore/unix/build/derivation-builder.cc#L1001-L1004
         # PATH = "/path-not-set";
         # Allows calling bash and `buildDerivation` as the Cmd
@@ -1360,6 +1359,15 @@ rec {
         # https://github.com/NixOS/nix/blob/2.32.0/src/libstore/unix/build/derivation-builder.cc#L1084-L1085
         TERM = "xterm-256color";
       };
+
+      # https://github.com/NixOS/nix/blob/2.28.2/src/libstore/unix/build/local-derivation-goal.cc#L1785
+      runChildEnv = {
+        # https://github.com/NixOS/nix/blob/2.28.2/src/libstore/include/nix/store/globals.hh#L1049-L1067
+        NIX_SSL_CERT_FILE = "${cacert}/etc/ssl/certs/ca-bundle.crt";
+        SSL_CERT_FILE = "${cacert}/etc/ssl/certs/ca-bundle.crt";
+      };
+
+      env = initEnv // runChildEnv;
 
     in
     streamLayeredImage {
@@ -1415,7 +1423,7 @@ rec {
               rcfile
             ];
         WorkingDir = sandboxBuildDir;
-        Env = lib.mapAttrsToList (name: value: "${name}=${value}") envVars;
+        Env = lib.mapAttrsToList (name: value: "${name}=${value}") env;
       };
     };
 
