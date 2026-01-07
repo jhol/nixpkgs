@@ -1397,24 +1397,26 @@ rec {
         chown -R ${toString uid}:${toString gid} .${sandboxBuildDir}
       '';
 
-      # Run this image as the given uid/gid
-      config.User = "${toString uid}:${toString gid}";
-      config.Cmd =
-        # https://github.com/NixOS/nix/blob/2.32.0/src/nix/nix-build/nix-build.cc#L240-L241
-        # https://github.com/NixOS/nix/blob/2.32.0/src/nix/nix-build/nix-build.cc#L659
-        if run == null then
-          [
-            shell
-            "--rcfile"
-            rcfile
-          ]
-        else
-          [
-            shell
-            rcfile
-          ];
-      config.WorkingDir = sandboxBuildDir;
-      config.Env = lib.mapAttrsToList (name: value: "${name}=${value}") envVars;
+      config = {
+        # Run this image as the given uid/gid.
+        User = "${toString uid}:${toString gid}";
+        Cmd =
+          # https://github.com/NixOS/nix/blob/2.32.0/src/nix/nix-build/nix-build.cc#L240-L241
+          # https://github.com/NixOS/nix/blob/2.32.0/src/nix/nix-build/nix-build.cc#L659
+          if run == null then
+            [
+              shell
+              "--rcfile"
+              rcfile
+            ]
+          else
+            [
+              shell
+              rcfile
+            ];
+        WorkingDir = sandboxBuildDir;
+        Env = lib.mapAttrsToList (name: value: "${name}=${value}") envVars;
+      };
     };
 
   # Wrapper around `streamNixShellImage` to build an image from the result.
