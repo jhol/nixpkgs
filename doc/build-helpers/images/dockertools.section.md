@@ -1524,6 +1524,12 @@ The environment in the image doesn't match `nix-shell` or `nix-build` exactly, a
 
   _Default value:_ `null`.
 
+`includeBuildDerivation` (Boolean; _optional_)
+
+: Whether to include a `buildDerivation` binary which builds the derivation.
+
+  _Default value:_ `true`.
+
 `extraContents` (Path or List of Paths or Null; _optional_)
 
 : Extra directories whose contents will be added to the generated image.

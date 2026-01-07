@@ -1266,6 +1266,7 @@ rec {
       shell ? lib.getExe bash,
       command ? null,
       run ? null,
+      includeBuildDerivation ? true,
       # Legacy convenience derivations for backwards compatibility.
       extraContents ? [
         binSh
@@ -1350,15 +1351,19 @@ rec {
       # Use a nix-shell shim as the OCI container entrypoint instead.
       #
 
-      path = lib.concatStringsSep ":" [
-        (dirOf shell)
-        (lib.makeBinPath [
-          # A binary that builds the derivation.
-          (writeShellScriptBin "buildDerivation" ''
-            exec ${lib.escapeShellArg (valueToString drv.drvAttrs.builder)} ${lib.escapeShellArgs (map valueToString drv.drvAttrs.args)}
-          '')
-        ])
-      ];
+      path = lib.concatStringsSep ":" (
+        [
+          (dirOf shell)
+        ]
+        ++ lib.optionals includeBuildDerivation [
+          (lib.makeBinPath [
+            # A binary that builds the derivation.
+            (writeShellScriptBin "buildDerivation" ''
+              exec ${lib.escapeShellArg (valueToString drv.drvAttrs.builder)} ${lib.escapeShellArgs (map valueToString drv.drvAttrs.args)}
+            '')
+          ])
+        ]
+      );
 
       # https://github.com/NixOS/nix/blob/2.32.0/src/nix/nix-build/nix-build.cc#L617-L651
       nixShell = writeScript "nix-shell" ''
