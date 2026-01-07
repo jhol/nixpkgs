@@ -1273,38 +1273,6 @@ rec {
       command == null || run == null
     ) "streamNixShellImage: Can't specify both command and run";
     let
-
-      # A binary that calls the command to build the derivation
-      builder = writeShellScriptBin "buildDerivation" ''
-        exec ${lib.escapeShellArg (valueToString drv.drvAttrs.builder)} ${lib.escapeShellArgs (map valueToString drv.drvAttrs.args)}
-      '';
-
-      staticPath = "${dirOf shell}:${lib.makeBinPath [ builder ]}";
-
-      # https://github.com/NixOS/nix/blob/2.32.0/src/nix/nix-build/nix-build.cc#L617-L651
-      rcfile = writeText "nix-shell-rc" ''
-        unset PATH
-        dontAddDisableDepTrack=1
-        # TODO: https://github.com/NixOS/nix/blob/2.32.0/src/nix/nix-build/nix-build.cc#L628
-        [ -e $stdenv/setup ] && source $stdenv/setup
-        PATH=${staticPath}:"$PATH"
-        SHELL=${lib.escapeShellArg shell}
-        BASH=${lib.escapeShellArg shell}
-        set +e
-        [ -n "$PS1" -a -z "$NIX_SHELL_PRESERVE_PROMPT" ] && PS1='\n\[\033[1;32m\][nix-shell:\w]\$\[\033[0m\] '
-        if [ "$(type -t runHook)" = function ]; then
-          runHook shellHook
-        fi
-        unset NIX_ENFORCE_PURITY
-        shopt -u nullglob
-        shopt -s execfail
-        ${optionalString (command != null || run != null) ''
-          ${optionalString (command != null) command}
-          ${optionalString (run != null) run}
-          exit
-        ''}
-      '';
-
       #
       # Create an environment variable map.
       #
@@ -1322,9 +1290,7 @@ rec {
       # https://github.com/NixOS/nix/blob/2.32.0/src/libstore/unix/build/derivation-builder.cc#L997
       initEnv = {
         # https://github.com/NixOS/nix/blob/2.32.0/src/libstore/unix/build/derivation-builder.cc#L1001-L1004
-        # PATH = "/path-not-set";
-        # Allows calling bash and `buildDerivation` as the Cmd
-        PATH = staticPath;
+        # Not setting `PATH` since it's set by the Nix shell shim.
 
         # https://github.com/NixOS/nix/blob/2.32.0/src/libstore/unix/build/derivation-builder.cc#L1006-L1012
         HOME = homeDirectory;
@@ -1369,6 +1335,54 @@ rec {
 
       env = initEnv // runChildEnv;
 
+      #
+      # Create a nix-shell shim.
+      #
+      # nix-shell proper relies on a startup file. Startup files are only run with certain (non-)interactive + (non-)login shell permutations.
+      #
+      # https://www.gnu.org/software/bash/manual/html_node/Bash-Startup-Files.html
+      #
+      # Use a nix-shell shim as the OCI container entrypoint instead.
+      #
+
+      path = lib.concatStringsSep ":" [
+        (dirOf shell)
+        (lib.makeBinPath [
+          # A binary that builds the derivation.
+          (writeShellScriptBin "buildDerivation" ''
+            exec ${lib.escapeShellArg (valueToString drv.drvAttrs.builder)} ${lib.escapeShellArgs (map valueToString drv.drvAttrs.args)}
+          '')
+        ])
+      ];
+
+      # https://github.com/NixOS/nix/blob/2.32.0/src/nix/nix-build/nix-build.cc#L617-L651
+      nixShell = writeScript "nix-shell" ''
+        #!${shell}
+
+        unset PATH
+        dontAddDisableDepTrack=1
+        # TODO: https://github.com/NixOS/nix/blob/2.32.0/src/nix/nix-build/nix-build.cc#L628
+        [ -e $stdenv/setup ] && source $stdenv/setup
+        PATH=${path}:"$PATH"
+        SHELL=${lib.escapeShellArg shell}
+        BASH=${lib.escapeShellArg shell}
+        set +e
+        [ -n "$PS1" -a -z "$NIX_SHELL_PRESERVE_PROMPT" ] && PS1='\n\[\033[1;32m\][nix-shell:\w]\$\[\033[0m\] '
+        if [ "$(type -t runHook)" = function ]; then
+          runHook shellHook
+        fi
+        unset NIX_ENFORCE_PURITY
+        shopt -u nullglob
+        shopt -s execfail
+
+        exec "$@"
+      '';
+
+      nixShellScript = writeScript "nix-shell-script" ''
+        ${optionalString (command != null) command}
+        ${optionalString (run != null) run}
+        exit
+      '';
     in
     streamLayeredImage {
       inherit name tag;
@@ -1408,20 +1422,23 @@ rec {
       config = {
         # Run this image as the given uid/gid.
         User = "${toString uid}:${toString gid}";
+        Entrypoint = [ nixShell ];
         Cmd =
           # https://github.com/NixOS/nix/blob/2.32.0/src/nix/nix-build/nix-build.cc#L240-L241
           # https://github.com/NixOS/nix/blob/2.32.0/src/nix/nix-build/nix-build.cc#L659
-          if run == null then
+          if command != null then
             [
               shell
-              "--rcfile"
-              rcfile
+              "-i"
+              nixShellScript
+            ]
+          else if run != null then
+            [
+              shell
+              nixShellScript
             ]
           else
-            [
-              shell
-              rcfile
-            ];
+            [ shell ];
         WorkingDir = sandboxBuildDir;
         Env = lib.mapAttrsToList (name: value: "${name}=${value}") env;
       };
